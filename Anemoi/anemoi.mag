@@ -1,0 +1,107 @@
+// You need to make an "anemoi/" directory in the working directory.
+// The last z variable plays the role of x0. Other zi variables are equivalent to xi.
+
+p := 28407454060060787;
+alpha := 3;
+alpha_inv := InverseMod(alpha, p-1);
+F := FiniteField(p);
+l := 1;
+g := elt<F | 7>;
+ginv := 1/g;
+SetAutoColumns(false);
+SetColumns(0);
+
+Weights := function(n_r)
+    return [2 * (5^i) * 3^(n_r - 1 - i) : i in [0..n_r-1]] cat [3^n_r-1];
+end function;
+
+MyRing := function(n_r)
+    ret := PolynomialRing(F, Weights(n_r));
+    AssignNames(~ret, ["z" cat Sprint(i) : i in [0..n_r]]);
+    return ret;
+end function;
+
+RoundConstants := function(n_r)
+    pi0 := elt<F | StringToInteger(Sprint(Pi(RealField(250)))[3..102])>; 
+    pi1 := elt<F | StringToInteger(Sprint(Pi(RealField(250)))[103..202])>;
+    ret := [];
+    for i in [1..n_r+1] do
+        Append(~ret, g * pi0^(2*i) + (pi0^i + pi1^0)^alpha);
+        Append(~ret, g * pi1^(2*0) + (pi0^i + pi1^0)^alpha + ginv);
+    end for;
+    return ret;
+end function;
+
+A := function(state, r, rc)
+    ret := state;
+    ret[1] +:= rc[2*r - 1];
+    ret[2] +:= rc[2*r];
+    return ret;
+end function;
+
+M := function(state)
+    ret := state;
+    ret[2] +:= ret[1];
+    ret[1] +:= ret[2];
+    return ret;
+end function;
+
+H := procedure(~state, z, r, ~pol_system)
+    P := state[1];
+    Q := state[2];
+    PP := P - g*Q^2 - ginv;
+    PP := NormalForm(PP, pol_system);
+    Append(~pol_system, z[r]^alpha - PP);
+    QQ := Q - z[r];
+    PP +:= g*QQ^2;
+    PP := NormalForm(PP, pol_system);
+    state := [PP, QQ];
+end procedure;
+
+ComputeGStar := function(last_pol, pol_system, n_r, z)
+    k_i := 1;
+    for i in [0..n_r-1] do
+        for j in [0..(-k_i mod 3)-1] do
+            last_pol := NormalForm(z[n_r - i] * last_pol, pol_system[1..n_r]);
+	    end for;
+	    k_i := k_i + 2*Ceiling(k_i/3);
+    end for;
+    return Normalize(last_pol);
+end function;
+
+
+Write("anemoi/anemoi_time.txt", "number of rounds, time to compute system" : Overwrite:=true);
+for n_r in [3..6] do
+    t := Realtime();
+    weights := Weights(n_r);
+    R := MyRing(n_r);
+    z := [R.i : i in [1..n_r]];
+    x := R.(n_r+1);
+    pol_system := [];
+    rc := RoundConstants(n_r);
+    state := [x, 0];
+    for r in [1..n_r] do
+        state := A(state, r, rc);
+        state := M(state);
+        H(~state, z, r, ~pol_system);
+    end for;
+    state := A(state, n_r+1, rc);
+    state := M(state);
+    Append(~pol_system, ComputeGStar(state[1], pol_system, n_r, z));
+    
+    compute_time := Realtime() - t;
+    Write("anemoi/anemoi_time.txt", Sprint(n_r) cat ", " cat Sprint(compute_time));
+    
+    f := "anemoi/anemoi_system_" cat Sprint(n_r) cat ".txt"; 
+    Write(f, Sprint(n_r + 1) : Overwrite:=true);
+    for i in [1..n_r] do
+        Write(f, Sprint(z[i]));
+    end for;
+    Write(f, Sprint(x));
+    for i in [1..n_r+1] do
+        Write(f, Sprint(weights[i]));
+    end for;
+    for i in [1..n_r+1] do
+        Write(f, Sprint(pol_system[i]));
+    end for;
+end for;
